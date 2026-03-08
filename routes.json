@@ -1,0 +1,5 @@
+[
+    "POST /generate",
+    "GET /history",
+    "POST /repurpose-all"
+]

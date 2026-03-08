@@ -1,0 +1,147 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply antialiased min-h-screen text-slate-100 bg-background-dark;
+  }
+}
+
+/* Custom scrollbar for webkit */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0f1623;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2b3b55;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4d88ff;
+}
+
+/* Auth Page Custom Gradients */
+.aurora-auth-bg-var1 {
+  background: linear-gradient(180deg, #050810 0%, #0d1221 100%);
+  background-attachment: fixed;
+  position: relative;
+  overflow: hidden;
+}
+
+.aurora-auth-bg-var2 {
+  background-color: #0f1623;
+  background-image:
+    radial-gradient(at 0% 0%, hsla(253, 16%, 7%, 1) 0, transparent 50%),
+    radial-gradient(at 50% 0%, hsla(225, 39%, 30%, 1) 0, transparent 50%),
+    radial-gradient(at 100% 0%, hsla(339, 49%, 30%, 1) 0, transparent 50%);
+  position: relative;
+  overflow: hidden;
+}
+
+.aurora-wave {
+  position: absolute;
+  width: 200%;
+  height: 200%;
+  top: -50%;
+  left: -50%;
+  background: radial-gradient(ellipse at center, rgba(77, 136, 255, 0.08) 0%, rgba(0, 0, 0, 0) 70%);
+  opacity: 0.6;
+  transform: rotate(30deg);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Hide scrollbar for elements with no-scrollbar */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  /* IE and Edge */
+  scrollbar-width: none;
+  /* Firefox */
+}
+
+/* AURORA Landing Page Classes */
+.mesh {
+  background: linear-gradient(135deg, #0f1623 0%, #1a2436 50%, #0f1623 100%);
+  background-size: 400% 400%;
+  animation: bg-mesh 15s ease infinite;
+}
+
+@keyframes bg-mesh {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.wave-headline {
+  background: linear-gradient(90deg, #fff, #4d88ff, #fff);
+  background-size: 200% auto;
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: wave 3s linear infinite;
+}
+
+@keyframes wave {
+  to {
+    background-position: 200% center;
+  }
+}
+
+.btn-p {
+  background: linear-gradient(90deg, #4d88ff 0%, #3b82f6 100%);
+  color: white;
+  padding: 1rem 2.5rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+  border-radius: 9999px;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 10px 25px -5px rgba(77, 136, 255, 0.4);
+  transition: all 0.3s ease;
+}
+
+.btn-p:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 15px 35px -5px rgba(77, 136, 255, 0.5);
+  opacity: 0.95;
+}
+
+.dock-grid {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.fi {
+  animation: fadeIn 0.8s ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
