@@ -1,4 +1,3 @@
-import React from 'react';
 import { Cpu, Zap, Layers } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 

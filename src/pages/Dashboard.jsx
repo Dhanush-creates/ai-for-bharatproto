@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Settings, History, Grid, LogOut, Copy, Download, RefreshCw, Edit2, Camera, Briefcase, PlaySquare, FileText, PlusCircle, Bookmark, Send, X, CloudUpload, Check, Menu, Trash2, Star, Save, Link } from 'lucide-react';
+// Routes handled locally
+import { Settings, History, Grid, LogOut, Copy, Download, RefreshCw, Edit2, Camera, Briefcase, PlaySquare, FileText, PlusCircle, Bookmark, Send, X, CloudUpload, Check, Menu, Trash2, Star, Link } from 'lucide-react';
 import { API_BASE_URL } from "../config";
 import {
     parseTokensFromHash,
@@ -14,7 +14,7 @@ import {
 } from "../auth";
 
 const Dashboard = () => {
-    const navigate = useNavigate();
+    // const navigate = useNavigate(); // Removed unused instantiation
 
     // Structural UI States
     const [showModal, setShowModal] = useState(false);
@@ -148,7 +148,7 @@ const Dashboard = () => {
                 try {
                     const parsedBody = JSON.parse(payload.body);
                     if (parsedBody.result) return parsedBody.result;
-                } catch (e) { }
+                } catch { /* ignored */ }
             } else if (typeof payload.body === 'object') {
                 if (payload.body.result) return payload.body.result;
             }
@@ -760,7 +760,7 @@ const Dashboard = () => {
                                                     try {
                                                         await navigator.clipboard.writeText(asset.content || "");
                                                         showToast("success", "Asset copied ✅");
-                                                    } catch (err) {
+                                                    } catch {
                                                         showToast("error", "Failed to copy");
                                                     }
                                                 }}

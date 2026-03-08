@@ -1,4 +1,4 @@
-import React from 'react';
+// React router imports follow
 import { Routes, Route, Navigate } from 'react-router-dom';
 import AuthLight from './pages/AuthLight';
 import AuthDark from './pages/AuthDark';

@@ -1,4 +1,3 @@
-import React from 'react';
 import { Mail, EyeOff, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -78,7 +77,7 @@ const AuthLight = () => {
                         </form>
                     </div>
                     <div className="bg-[#202e4b]/50 px-8 py-4 border-t border-surface-border flex items-center justify-center gap-2">
-                        <span className="text-slate-400 text-sm">Don't have an account?</span>
+                        <span className="text-slate-400 text-sm">Don&apos;t have an account?</span>
                         <a className="text-primary font-bold text-sm hover:underline" href="#">Create Account</a>
                     </div>
                 </div>
