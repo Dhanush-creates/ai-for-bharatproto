@@ -1,6 +1,7 @@
 {
   "name": "aurora-ai-content-studio",
   "private": true,
+  "homepage": "https://dhanush-creates.github.io/ai-for-bharatproto/",
   "version": "1.0.0",
   "description": "Serverless AWS-native content logistics engine built for the AI for Bharat Hackathon.",
   "author": "Dhanush",
@@ -8,6 +9,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && node -e \"require('fs').copyFileSync('dist/index.html', 'dist/404.html')\"",
+    "predeploy": "npm run build",
+    "deploy": "npx gh-pages -d dist",
     "lint": "eslint .",
     "preview": "vite preview"
   },
