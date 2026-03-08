@@ -1,7 +1,9 @@
 {
-  "name": "aurora-app",
+  "name": "aurora-ai-content-studio",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Serverless AWS-native content logistics engine built for the AI for Bharat Hackathon.",
+  "author": "Dhanush",
   "type": "module",
   "scripts": {
     "dev": "vite",

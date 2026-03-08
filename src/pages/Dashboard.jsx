@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Settings, History, Grid, LogOut, Copy, Download, RefreshCw, Edit2, Camera, Briefcase, PlaySquare, FileText, PlusCircle, Bookmark, Send, X, CloudUpload, Check, Menu, Trash2, Star, Save, Link } from 'lucide-react';
 import { API_BASE_URL } from "../config";
