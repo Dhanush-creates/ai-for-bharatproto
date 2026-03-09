@@ -8,6 +8,12 @@ const AuthDark = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+
+    // New Attributes
+    const [name, setName] = useState('');
+    const [birthdate, setBirthdate] = useState('');
+    const [gender, setGender] = useState('Prefer not to say');
+
     const [isVerification, setIsVerification] = useState(false);
     const [verificationCode, setVerificationCode] = useState('');
 
@@ -48,12 +54,48 @@ const AuthDark = () => {
                 }
 
                 setIsVerification(false);
-                setIsLogin(true);
                 setVerificationCode('');
                 setStatusMessage({
                     type: 'success',
-                    text: 'Account verified successfully! You may now sign in.'
+                    text: 'Account verified successfully! Logging you in...'
                 });
+
+                // Auto-login after successful verification
+                const loginRes = await fetch(cognitoEndpoint, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/x-amz-json-1.1",
+                        "X-Amz-Target": "AWSCognitoIdentityProviderService.InitiateAuth"
+                    },
+                    body: JSON.stringify({
+                        AuthFlow: "USER_PASSWORD_AUTH",
+                        ClientId: clientId,
+                        AuthParameters: {
+                            USERNAME: email,
+                            PASSWORD: password
+                        }
+                    })
+                });
+
+                const loginData = await loginRes.json();
+
+                if (!loginRes.ok) {
+                    setIsLogin(true);
+                    throw new Error(loginData.message || "Failed to auto-login. Please sign in manually.");
+                }
+
+                if (loginData.AuthenticationResult && loginData.AuthenticationResult.IdToken) {
+                    const expiresIn = loginData.AuthenticationResult.ExpiresIn || 3600;
+                    setSession({
+                        idToken: loginData.AuthenticationResult.IdToken,
+                        expiresAt: Date.now() + expiresIn * 1000,
+                    });
+                    navigate('/dashboard', { replace: true });
+                } else {
+                    setIsLogin(true);
+                    throw new Error("Missing authentication token from AWS");
+                }
+                return; // Navigation handled
 
             } else if (isLogin) {
                 // --- LOGIN FLOW ---
@@ -108,7 +150,9 @@ const AuthDark = () => {
                         Password: password,
                         UserAttributes: [
                             { Name: "email", Value: email },
-                            { Name: "name", Value: email.split('@')[0] }
+                            { Name: "name", Value: name || email.split('@')[0] },
+                            { Name: "birthdate", Value: birthdate },
+                            { Name: "gender", Value: gender }
                         ]
                     })
                 });
@@ -184,6 +228,56 @@ const AuthDark = () => {
                                 </div>
                             ) : (
                                 <>
+                                    {!isLogin && (
+                                        <>
+                                            <div className="flex flex-col gap-1.5">
+                                                <label className="text-slate-300 text-sm font-medium ml-1" htmlFor="name-dark">Full Name</label>
+                                                <div className="relative group">
+                                                    <input
+                                                        value={name}
+                                                        onChange={(e) => setName(e.target.value)}
+                                                        className="w-full bg-[#0f1623] text-white border border-slate-700 rounded-lg px-4 py-3.5 outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all placeholder:text-slate-500 font-body text-base"
+                                                        id="name-dark"
+                                                        placeholder="John Doe"
+                                                        type="text"
+                                                        required
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="flex flex-col gap-1.5">
+                                                <label className="text-slate-300 text-sm font-medium ml-1" htmlFor="dob-dark">Date of Birth</label>
+                                                <div className="relative group">
+                                                    <input
+                                                        value={birthdate}
+                                                        onChange={(e) => setBirthdate(e.target.value)}
+                                                        className="w-full bg-[#0f1623] text-white border border-slate-700 rounded-lg px-4 py-3.5 outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all font-body text-base"
+                                                        id="dob-dark"
+                                                        type="date"
+                                                        required
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="flex flex-col gap-1.5">
+                                                <label className="text-slate-300 text-sm font-medium ml-1" htmlFor="gender-dark">Gender</label>
+                                                <div className="relative group">
+                                                    <select
+                                                        value={gender}
+                                                        onChange={(e) => setGender(e.target.value)}
+                                                        className="w-full bg-[#0f1623] text-white border border-slate-700 rounded-lg px-4 py-3.5 outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all font-body text-base appearance-none"
+                                                        id="gender-dark"
+                                                        required
+                                                    >
+                                                        <option value="Male">Male</option>
+                                                        <option value="Female">Female</option>
+                                                        <option value="Non-binary">Non-binary</option>
+                                                        <option value="Prefer not to say">Prefer not to say</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
                                     <div className="flex flex-col gap-1.5">
                                         <label className="text-slate-300 text-sm font-medium ml-1" htmlFor="email-dark">Email address</label>
                                         <div className="relative group">
@@ -264,9 +358,7 @@ const AuthDark = () => {
                 </div>
             </main>
 
-            <footer className="w-full p-6 text-center z-10 relative">
-                <p className="text-slate-500 text-xs">© 2024 Aurora AI Inc. All rights reserved. | <Link to="/auth-light" className="hover:text-primary">Variant 2</Link></p>
-            </footer>
+
         </div>
     );
 };

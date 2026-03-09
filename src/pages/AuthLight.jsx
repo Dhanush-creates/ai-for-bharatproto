@@ -85,9 +85,7 @@ const AuthLight = () => {
 
             </main>
 
-            <footer className="w-full p-6 text-center z-10 relative">
-                <p className="text-slate-500 text-xs">© 2024 Aurora AI Inc. All rights reserved. | <Link to="/auth-dark" className="hover:text-primary">Variant 1</Link></p>
-            </footer>
+
         </div>
     );
 };

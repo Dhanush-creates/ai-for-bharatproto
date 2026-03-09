@@ -24,16 +24,19 @@ const Dashboard = () => {
     // Core Generation States
     const [inputText, setInputText] = useState("");
     const [isGenerating, setIsGenerating] = useState(false);
-    const [activePlatform, setActivePlatform] = useState("instagram");
+    const [selectedPlatforms, setSelectedPlatforms] = useState([]);
+    const [activeOutputPlatform, setActiveOutputPlatform] = useState("");
     const [generatedOutputs, setGeneratedOutputs] = useState({});
 
     // Copy Button Polish State
     const [isCopied, setIsCopied] = useState(false);
 
     // AI Typing states
-    const [typedText, setTypedText] = useState("");
+    const [typedOutputs, setTypedOutputs] = useState({});
+    const [regeneratingPlatforms, setRegeneratingPlatforms] = useState({});
     const typingTimerRef = useRef(null);
     const captionRef = useRef(null);
+    const prevGeneratedRef = useRef({});
 
     // Professional Toast Notification Array
     const [toasts, setToasts] = useState([]);
@@ -102,9 +105,12 @@ const Dashboard = () => {
 
                 const email = payload.email || "";
                 const username = payload['cognito:username'] || "";
+                const fullName = payload.name || "";
 
                 let displayName = "User";
-                if (email) {
+                if (fullName) {
+                    displayName = fullName;
+                } else if (email) {
                     displayName = email.split('@')[0];
                 } else if (username) {
                     displayName = username;
@@ -160,32 +166,70 @@ const Dashboard = () => {
 
     /** Typing Effect + Auto-scroll Trigger **/
     useEffect(() => {
-        const fullText = generatedOutputs[activePlatform] || "";
-        setTypedText("");
-
         if (typingTimerRef.current) clearInterval(typingTimerRef.current);
 
-        if (!fullText) return;
+        const targetOutputs = { ...generatedOutputs };
+        const keys = Object.keys(targetOutputs);
+
+        if (keys.length === 0) {
+            setTypedOutputs({});
+            prevGeneratedRef.current = {};
+            return;
+        }
+
+        const prevOutputs = prevGeneratedRef.current;
+        const keysToType = keys.filter(k => targetOutputs[k] !== prevOutputs[k]);
+
+        if (keysToType.length === 0) return;
+
+        // Update the ref
+        prevGeneratedRef.current = targetOutputs;
+
+        // Reset only the ones that need typing
+        setTypedOutputs(prev => {
+            const next = { ...prev };
+            keysToType.forEach(k => {
+                next[k] = ""; // start from 0
+            });
+            return next;
+        });
 
         let currentIndex = 0;
+
         typingTimerRef.current = setInterval(() => {
-            currentIndex++;
-            setTypedText(fullText.slice(0, currentIndex));
+            currentIndex += 2; // Fast type effect
+
+            setTypedOutputs(prev => {
+                const nextState = { ...prev };
+                let typingDone = true;
+
+                keysToType.forEach(k => {
+                    const text = targetOutputs[k] || "";
+                    if (currentIndex < text.length) {
+                        nextState[k] = text.slice(0, currentIndex);
+                        typingDone = false;
+                    } else {
+                        nextState[k] = text;
+                    }
+                });
+
+                if (typingDone) {
+                    clearInterval(typingTimerRef.current);
+                }
+                return nextState;
+            });
 
             // Auto scroll dynamically
             if (captionRef.current) {
                 captionRef.current.scrollTop = captionRef.current.scrollHeight;
             }
 
-            if (currentIndex >= fullText.length) {
-                clearInterval(typingTimerRef.current);
-            }
         }, 15);
 
         return () => {
             if (typingTimerRef.current) clearInterval(typingTimerRef.current);
         };
-    }, [generatedOutputs, activePlatform]);
+    }, [generatedOutputs]);
 
     /** Close modal on ESC key **/
     useEffect(() => {
@@ -201,56 +245,80 @@ const Dashboard = () => {
     }, [showHistory]);
 
     /** API Triggers **/
+    const togglePlatform = (id) => {
+        setSelectedPlatforms(prev =>
+            prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
+        );
+    };
+
     const handleGenerate = async () => {
         if (!inputText.trim()) {
             showToast("info", "Please add source material first.");
+            return;
+        }
+        if (selectedPlatforms.length === 0) {
+            showToast("info", "Please select at least one platform.");
             return;
         }
 
         setIsGenerating(true);
 
         try {
-            const response = await authorizedFetch(
-                `${API_BASE_URL}/generate`,
-                {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ text: inputText, platform: activePlatform }),
+            const newResults = {};
+            await Promise.all(selectedPlatforms.map(async (platform) => {
+                const response = await authorizedFetch(
+                    `${API_BASE_URL}/generate`,
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ text: inputText, platform }),
+                    }
+                );
+
+                if (response.status === 401) {
+                    showToast("error", "Session expired. Please log in again.");
+                    throw new Error("unauthorized");
                 }
-            );
 
-            if (response.status === 401) {
-                showToast("error", "Session expired. Please log in again.");
-                setIsGenerating(false);
-                return;
-            }
+                const rawText = await response.text();
 
-            const rawText = await response.text();
+                let data;
+                try {
+                    data = JSON.parse(rawText);
+                } catch (jsonErr) {
+                    console.error("JSON parse error:", jsonErr);
+                    return;
+                }
 
-            let data;
-            try {
-                data = JSON.parse(rawText);
-            } catch (jsonErr) {
-                console.error("JSON parse error:", jsonErr);
-                showToast("error", "Invalid JSON response from server.");
-                setIsGenerating(false);
-                return;
-            }
+                const output = extractResult(data);
 
-            const output = extractResult(data);
+                if (output && output.trim()) {
+                    newResults[platform] = output;
+                }
+            }));
 
-            if (!output || !output.trim()) {
-                showToast("error", "Generation returned empty content. Try again.");
-                setIsGenerating(false);
-                return;
-            }
+            setGeneratedOutputs((prev) => {
+                const next = { ...prev, ...newResults };
 
-            setGeneratedOutputs((prev) => ({ ...prev, [activePlatform]: output }));
-            showToast("success", `Content generated for ${activePlatform}`);
+                const firstGenerated = selectedPlatforms.find(p => !!newResults[p]);
+
+                setActiveOutputPlatform(current => {
+                    const hasContent = !!next[current];
+                    if (!current || !hasContent) {
+                        return firstGenerated || current;
+                    }
+                    return current;
+                });
+
+                return next;
+            });
+
+            showToast("success", `Content generated for selected platforms`);
 
             // Silently refresh history in background (don't open drawer)
             fetchHistory(false).catch(() => { });
         } catch (error) {
+            if (error.message === "unauthorized") return;
             console.error("API Call Failed:", error);
             const errorMsg = error.message?.includes('fetch')
                 ? "Network error. Check your connection and try again."
@@ -316,8 +384,12 @@ const Dashboard = () => {
 
     /** Save Asset **/
     const handleSaveAsset = async () => {
-        const content = generatedOutputs[activePlatform] || "";
-        if (!content.trim()) {
+        const content = selectedPlatforms.map(p => {
+            const out = generatedOutputs[p];
+            return out ? `--- ${p.toUpperCase()} ---\n${out}\n` : "";
+        }).join("\n").trim();
+
+        if (!content) {
             showToast("info", "Nothing to save yet.");
             return;
         }
@@ -325,7 +397,7 @@ const Dashboard = () => {
             // Local fallback: The /assets API routes have not been deployed to AWS API Gateway yet.
             const newAsset = {
                 sk: Date.now().toString(),
-                platform: activePlatform,
+                platform: selectedPlatforms.join(', '),
                 content: content,
                 createdAt: new Date().toISOString()
             };
@@ -339,7 +411,7 @@ const Dashboard = () => {
             // Sync with current view if panel is open
             setSavedAssets(updatedAssets);
 
-            showToast("success", `Saved to ${activePlatform} assets ⭐`);
+            showToast("success", `Saved to your assets ⭐`);
         } catch (err) {
             console.error("Save asset failed:", err);
             showToast("error", "Save failed");
@@ -370,10 +442,88 @@ const Dashboard = () => {
         ? historyItems
         : historyItems.filter(item => (item.response?.platform || '').toLowerCase() === historyFilter);
 
-    /** Clipboard Actions **/
+    /** Platform Output Actions **/
+    const handleCopySingle = async (platform) => {
+        const text = generatedOutputs[platform];
+        if (!text) return;
+        try {
+            await navigator.clipboard.writeText(text);
+            showToast("success", `Copied ${platform} content ✅`);
+        } catch (e) {
+            console.error("Copy failed:", e);
+            showToast("error", "Copy failed");
+        }
+    };
+
+    const handleClearSingle = (platform) => {
+        setGeneratedOutputs(prev => {
+            const next = { ...prev };
+            delete next[platform];
+
+            // Switch view if we are clearing the currently active platform
+            setActiveOutputPlatform(current => {
+                if (current === platform) {
+                    const remaining = Object.keys(next);
+                    return remaining.length > 0 ? remaining[0] : "";
+                }
+                return current;
+            });
+
+            return next;
+        });
+        setTypedOutputs(prev => {
+            const next = { ...prev };
+            delete next[platform];
+            return next;
+        });
+        setRegeneratingPlatforms(prev => {
+            const next = { ...prev };
+            delete next[platform];
+            return next;
+        });
+        delete prevGeneratedRef.current[platform];
+        showToast("info", `Cleared ${platform} output`);
+    };
+
+    const handleRegenerateSingle = async (platform) => {
+        if (!inputText.trim()) {
+            showToast("error", "Source material is required.");
+            return;
+        }
+        setRegeneratingPlatforms(prev => ({ ...prev, [platform]: true }));
+        try {
+            const response = await authorizedFetch(`${API_BASE_URL}/generate`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text: inputText, platform }),
+            });
+            if (response.status === 401) {
+                showToast("error", "Session expired.");
+                throw new Error("unauthorized");
+            }
+            const rawText = await response.text();
+            let data;
+            try { data = JSON.parse(rawText); } catch { return; }
+            const output = extractResult(data);
+            if (output && output.trim()) {
+                setGeneratedOutputs(prev => ({ ...prev, [platform]: output }));
+                showToast("success", `Regenerated ${platform} content`);
+            }
+        } catch (e) {
+            if (e.message !== "unauthorized") showToast("error", `Failed to regenerate ${platform}`);
+        } finally {
+            setRegeneratingPlatforms(prev => ({ ...prev, [platform]: false }));
+        }
+    };
+
+    /** Global Actions **/
     const handleCopy = async () => {
-        const textToCopy = generatedOutputs[activePlatform] || "";
-        if (!textToCopy.trim()) {
+        const textToCopy = selectedPlatforms.map(p => {
+            const out = generatedOutputs[p];
+            return out ? `--- ${p.toUpperCase()} ---\n${out}\n` : "";
+        }).join("\n").trim();
+
+        if (!textToCopy) {
             showToast("info", "Nothing to copy yet...");
             return;
         }
@@ -391,8 +541,17 @@ const Dashboard = () => {
 
     /** Blob TXT Actions **/
     const handleDownload = () => {
-        const textToDownload = generatedOutputs[activePlatform] || "";
-        if (!textToDownload.trim()) {
+        let textToDownload = "";
+
+        if (activeOutputPlatform && generatedOutputs[activeOutputPlatform]) {
+            textToDownload = generatedOutputs[activeOutputPlatform];
+        } else {
+            textToDownload = Object.entries(generatedOutputs)
+                .map(([p, out]) => `--- ${p.toUpperCase()} ---\n${out}\n`)
+                .join("\n").trim();
+        }
+
+        if (!textToDownload) {
             showToast("info", "Nothing to download yet.");
             return;
         }
@@ -400,11 +559,14 @@ const Dashboard = () => {
         const element = document.createElement("a");
         const file = new Blob([textToDownload], { type: 'text/plain' });
         element.href = URL.createObjectURL(file);
-        element.download = `aurora-${activePlatform}.txt`;
+        const filename = activeOutputPlatform
+            ? `aurora-${activeOutputPlatform}.txt`
+            : `aurora-all-platforms.txt`;
+        element.download = filename;
         document.body.appendChild(element);
         element.click();
         document.body.removeChild(element);
-        showToast("success", "Downloaded ✅");
+        showToast("success", activeOutputPlatform ? `Downloaded ${activeOutputPlatform} ✅` : "Downloaded all outputs ✅");
     };
 
     /** View Helpers **/
@@ -417,7 +579,7 @@ const Dashboard = () => {
 
     const charsTooShort = inputText.trim().length > 0 && inputText.trim().length < 10;
     const isOverLimit = inputText.length > 5000;
-    const disableGenerate = isGenerating || charsTooShort || isOverLimit || inputText.trim().length === 0;
+    const disableGenerate = isGenerating || charsTooShort || isOverLimit || inputText.trim().length === 0 || selectedPlatforms.length === 0;
 
     if (!authReady) {
         return <div className="min-h-screen bg-background-dark flex items-center justify-center"><div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin"></div></div>;
@@ -653,7 +815,8 @@ const Dashboard = () => {
                                                 e.stopPropagation();
                                                 if (item.request?.text) setInputText(item.request.text);
                                                 if (item.response?.platform) {
-                                                    setActivePlatform(item.response.platform);
+                                                    setActiveOutputPlatform(item.response.platform);
+                                                    setSelectedPlatforms(prev => prev.includes(item.response.platform) ? prev : [...prev, item.response.platform]);
                                                     if (item.response.result) {
                                                         setGeneratedOutputs(prev => ({ ...prev, [item.response.platform]: item.response.result }));
                                                     }
@@ -735,7 +898,8 @@ const Dashboard = () => {
                                         className="p-4 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 hover:border-white/10 cursor-pointer transition-all duration-200 group relative block w-full text-left"
                                         onClick={() => {
                                             if (asset.platform) {
-                                                setActivePlatform(asset.platform);
+                                                setActiveOutputPlatform(asset.platform);
+                                                setSelectedPlatforms(prev => prev.includes(asset.platform) ? prev : [...prev, asset.platform]);
                                                 if (asset.content) {
                                                     setGeneratedOutputs(prev => ({ ...prev, [asset.platform]: asset.content }));
                                                 }
@@ -864,6 +1028,9 @@ const Dashboard = () => {
                     <div className="flex items-center gap-3">
                         <div className="flex items-center gap-3">
                             {charsTooShort && <span className="text-rose-400 text-xs font-medium hidden sm:block animate-pulse">Too short</span>}
+                            {selectedPlatforms.length === 0 && inputText.trim().length >= 10 && !isOverLimit && (
+                                <span className="text-amber-400 text-xs font-medium animate-pulse">Select at least one platform</span>
+                            )}
                             <button
                                 onClick={handleGenerate}
                                 disabled={disableGenerate}
@@ -933,26 +1100,31 @@ const Dashboard = () => {
                                         <span className="mx-2 text-slate-700">•</span>
                                         <kbd className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] text-slate-300 mr-1">Shift</kbd> + <kbd className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] text-slate-300 mr-1">Enter</kbd> for new line
                                     </p>
-                                    <button
-                                        onClick={handleGenerate}
-                                        disabled={disableGenerate}
-                                        className={`px-5 py-2.5 rounded-lg text-xs font-bold shadow-lg flex items-center gap-2 transition-all duration-300
-                                            ${disableGenerate
-                                                ? "opacity-50 cursor-not-allowed bg-white/5 text-slate-400 border border-white/5"
-                                                : "bg-gradient-to-r from-primary to-blue-600 text-white hover:scale-[1.02] active:scale-[0.98] shadow-[0_4px_15px_rgba(77,136,255,0.3)] border border-transparent"
-                                            }`}
-                                    >
-                                        {isGenerating ? (
-                                            <>
-                                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                                Generating...
-                                            </>
-                                        ) : (
-                                            <>
-                                                Generate <Send className="w-3.5 h-3.5 ml-1" />
-                                            </>
+                                    <div className="flex items-center gap-3">
+                                        {selectedPlatforms.length === 0 && inputText.trim().length >= 10 && !isOverLimit && (
+                                            <span className="text-amber-400 text-xs font-medium animate-pulse">Select at least one platform</span>
                                         )}
-                                    </button>
+                                        <button
+                                            onClick={handleGenerate}
+                                            disabled={disableGenerate}
+                                            className={`px-5 py-2.5 rounded-lg text-xs font-bold shadow-lg flex items-center gap-2 transition-all duration-300
+                                            ${disableGenerate
+                                                    ? "opacity-50 cursor-not-allowed bg-white/5 text-slate-400 border border-white/5"
+                                                    : "bg-gradient-to-r from-primary to-blue-600 text-white hover:scale-[1.02] active:scale-[0.98] shadow-[0_4px_15px_rgba(77,136,255,0.3)] border border-transparent"
+                                                }`}
+                                        >
+                                            {isGenerating ? (
+                                                <>
+                                                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                                    Generating...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    Generate <Send className="w-3.5 h-3.5 ml-1" />
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -962,21 +1134,36 @@ const Dashboard = () => {
                     <div className="flex-1 flex flex-col bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 shadow-[0_8px_32px_rgb(0,0,0,0.4)] min-h-[500px] lg:min-h-0 relative">
                         <div className="px-4 py-3 border-b border-white/10 bg-black/20 flex gap-1 overflow-x-auto scrollbar-none shrink-0 relative items-center">
                             {platforms.map(p => (
-                                <button
+                                <div
                                     key={p.id}
-                                    onClick={() => setActivePlatform(p.id)}
-                                    className={`relative flex items-center gap-2 px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-all duration-300
-                                        ${activePlatform === p.id
+                                    onClick={() => setActiveOutputPlatform(p.id)}
+                                    className={`relative flex items-center gap-2.5 px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-all duration-300 cursor-pointer select-none
+                                        ${activeOutputPlatform === p.id
                                             ? "bg-white/10 text-white font-bold"
                                             : "hover:bg-white/5 text-slate-400 hover:text-white font-medium"
                                         }`}
                                 >
-                                    <p.icon className={`w-4 h-4 ${activePlatform === p.id ? 'text-primary' : ''}`} />
+                                    {/* Toggle generation selection */}
+                                    <div
+                                        onClick={(e) => { e.stopPropagation(); togglePlatform(p.id); }}
+                                        className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-all ${selectedPlatforms.includes(p.id) ? 'bg-primary border-primary' : 'border-slate-500 bg-black/20 hover:border-white'}`}
+                                    >
+                                        {selectedPlatforms.includes(p.id) && <Check className="w-2.5 h-2.5 text-white stroke-[3] my-auto" />}
+                                    </div>
+
+                                    <p.icon className={`w-4 h-4 ${activeOutputPlatform === p.id ? 'text-primary' : ''}`} />
                                     {p.label}
-                                    {activePlatform === p.id && (
+
+                                    {/* Indicator if generated content exists */}
+                                    {generatedOutputs[p.id] && (
+                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 absolute top-2 right-2 shadow-[0_0_5px_rgba(52,211,153,0.5)]"></div>
+                                    )}
+
+                                    {/* Active tab indicator */}
+                                    {activeOutputPlatform === p.id && (
                                         <span className="absolute -bottom-3 left-0 w-full h-[2px] bg-primary shadow-[0_-2px_8px_rgba(77,136,255,0.8)]"></span>
                                     )}
-                                </button>
+                                </div>
                             ))}
                             <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 border border-white/10 hover:bg-white/10 text-slate-400 hover:text-white rounded-md text-xs font-medium transition-colors whitespace-nowrap ml-auto">
                                 <PlusCircle className="w-3.5 h-3.5" />
@@ -984,37 +1171,107 @@ const Dashboard = () => {
                             </button>
                         </div>
 
-                        <div className="flex-1 p-6 sm:p-8 overflow-y-auto scroll-smooth scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent bg-black/10">
-                            <div className="max-w-xl mx-auto space-y-8">
-                                <div className="relative min-h-[150px]">
-                                    {isGenerating ? (
-                                        /* Advanced Skeleton Loader per requirements */
-                                        <div className="space-y-4 animate-pulse pt-2">
-                                            <div className="h-3 bg-white/10 rounded-full w-3/4"></div>
-                                            <div className="h-3 bg-white/10 rounded-full w-full"></div>
-                                            <div className="h-3 bg-white/10 rounded-full w-full"></div>
-                                            <div className="h-3 bg-white/10 rounded-full w-5/6"></div>
-                                            <div className="h-3 bg-white/10 rounded-full w-1/2 mt-6"></div>
+                        <div ref={captionRef} className="flex-1 p-6 sm:p-8 overflow-y-auto scroll-smooth scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent bg-black/10">
+                            <div className="max-w-xl mx-auto space-y-6">
+                                {(!activeOutputPlatform || Object.keys(generatedOutputs).length === 0) && !isGenerating ? (
+                                    <div className="opacity-70 flex flex-col items-center justify-center py-16">
+                                        <div className="w-14 h-14 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
+                                            <FileText className="w-6 h-6 text-primary/80" />
                                         </div>
-                                    ) : (
-                                        <div
-                                            ref={captionRef}
-                                            className="text-[15px] text-slate-200 leading-relaxed whitespace-pre-wrap font-light tracking-wide max-h-[350px] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 pr-2"
-                                        >
-                                            {typedText || ""}
+                                        <p className="text-slate-300 font-medium text-sm">
+                                            {Object.keys(generatedOutputs).length === 0 ? "No content generated yet" : "Select a platform to view generated content"}
+                                        </p>
+                                        <p className="text-xs text-slate-500 mt-2 max-w-[220px] text-center leading-relaxed">
+                                            {Object.keys(generatedOutputs).length === 0
+                                                ? "Select platforms and click generate to see localized outputs here."
+                                                : "Click any platform tab at the top to view its specialized AI output."}
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <>
+                                        {/* Render active platform's generated output card */}
+                                        {(() => {
+                                            const platformId = activeOutputPlatform;
+                                            const p = platforms.find(pl => pl.id === platformId);
+                                            const content = typedOutputs[platformId] ?? generatedOutputs[platformId] ?? "";
+                                            const isRegenerating = regeneratingPlatforms[platformId];
 
-                                            {!generatedOutputs[activePlatform] && !isGenerating && (
-                                                <div className="opacity-70 flex flex-col items-center justify-center py-10">
-                                                    <div className="w-14 h-14 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
-                                                        <FileText className="w-6 h-6 text-primary/80" />
+                                            if (!content && !isRegenerating && !isGenerating) {
+                                                return (
+                                                    <div className="opacity-70 flex flex-col items-center justify-center py-16 animate-in fade-in">
+                                                        <div className="w-14 h-14 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
+                                                            {p ? <p.icon className="w-6 h-6 text-slate-500" /> : <FileText className="w-6 h-6 text-slate-500" />}
+                                                        </div>
+                                                        <p className="text-slate-300 font-medium text-sm">No {p ? p.label : platformId} content generated yet</p>
+                                                        <p className="text-xs text-slate-500 mt-2 max-w-[220px] text-center leading-relaxed">Select this platform and click generate to create content.</p>
                                                     </div>
-                                                    <p className="text-slate-300 font-medium text-sm">No content generated yet</p>
-                                                    <p className="text-xs text-slate-500 mt-1 max-w-[200px] text-center">Add source notes and click generate</p>
+                                                );
+                                            }
+
+                                            if (isGenerating && !content) {
+                                                return (
+                                                    <div className="bg-white/5 border border-white/10 rounded-xl p-5 shadow-lg space-y-4 animate-pulse">
+                                                        <div className="h-4 bg-white/10 rounded-full w-1/4 mb-4"></div>
+                                                        <div className="h-3 bg-white/10 rounded-full w-3/4"></div>
+                                                        <div className="h-3 bg-white/10 rounded-full w-full"></div>
+                                                        <div className="h-3 bg-white/10 rounded-full w-full"></div>
+                                                        <div className="h-3 bg-white/10 rounded-full w-5/6"></div>
+                                                        <div className="h-3 bg-white/10 rounded-full w-1/2 mt-6"></div>
+                                                    </div>
+                                                );
+                                            }
+
+                                            return (
+                                                <div key={platformId} className="bg-white/5 border border-white/10 rounded-xl overflow-hidden shadow-lg relative group transition-all duration-300 hover:border-white/20 animate-in fade-in slide-in-from-bottom-4">
+                                                    <div className="px-5 py-3 bg-black/40 border-b border-white/5 flex items-center justify-between">
+                                                        <div className="flex items-center gap-2.5">
+                                                            {p ? <p.icon className="w-4 h-4 text-primary" /> : <FileText className="w-4 h-4 text-primary" />}
+                                                            <h4 className="text-white font-bold text-xs tracking-wider uppercase">{p ? p.label : platformId}</h4>
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200">
+                                                            <button onClick={() => handleCopySingle(platformId)} className="p-1.5 text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 rounded border border-transparent hover:border-white/10 transition-all flex items-center gap-1.5 px-2" title="Copy">
+                                                                <Copy className="w-3.5 h-3.5" />
+                                                                <span className="text-[10px] uppercase font-bold hidden md:inline tracking-wider">Copy</span>
+                                                            </button>
+                                                            <button onClick={() => handleRegenerateSingle(platformId)} className="p-1.5 text-slate-400 hover:text-primary bg-white/5 hover:bg-white/10 rounded border border-transparent hover:border-white/10 transition-all flex items-center gap-1.5 px-2" title="Regenerate">
+                                                                <RefreshCw className={`w-3.5 h-3.5 ${isRegenerating ? 'animate-spin' : ''}`} />
+                                                                <span className="text-[10px] uppercase font-bold hidden md:inline tracking-wider">Regenerate</span>
+                                                            </button>
+                                                            <div className="w-px h-4 bg-white/10 mx-1"></div>
+                                                            <button onClick={() => handleClearSingle(platformId)} className="p-1.5 text-slate-400 hover:text-rose-400 bg-white/5 hover:bg-rose-500/10 rounded border border-transparent hover:border-rose-500/20 transition-all px-2" title="Clear">
+                                                                <Trash2 className="w-3.5 h-3.5 mt-0.5" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    <div className="p-5 text-[14px] text-slate-200 leading-relaxed whitespace-pre-wrap font-light tracking-wide min-h-[50px]">
+                                                        {isRegenerating ? (
+                                                            <div className="space-y-4 animate-pulse pt-2">
+                                                                <div className="h-3 bg-white/10 rounded-full w-3/4"></div>
+                                                                <div className="h-3 bg-white/10 rounded-full w-full"></div>
+                                                                <div className="h-3 bg-white/10 rounded-full w-full"></div>
+                                                                <div className="h-3 bg-white/10 rounded-full w-5/6"></div>
+                                                            </div>
+                                                        ) : (
+                                                            content
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
+                                            );
+                                        })()}
+
+                                        {/* Global Skeleton Loader when generating initial batches */}
+                                        {isGenerating && (
+                                            <div className="bg-white/5 border border-white/10 rounded-xl p-5 shadow-lg space-y-4 animate-pulse">
+                                                <div className="h-4 bg-white/10 rounded-full w-1/4 mb-4"></div>
+                                                <div className="h-3 bg-white/10 rounded-full w-3/4"></div>
+                                                <div className="h-3 bg-white/10 rounded-full w-full"></div>
+                                                <div className="h-3 bg-white/10 rounded-full w-full"></div>
+                                                <div className="h-3 bg-white/10 rounded-full w-5/6"></div>
+                                                <div className="h-3 bg-white/10 rounded-full w-1/2 mt-6"></div>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
                             </div>
                         </div>
 

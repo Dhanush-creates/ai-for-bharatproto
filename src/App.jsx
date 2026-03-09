@@ -6,9 +6,14 @@ import Dashboard from './pages/Dashboard';
 import LandingPage from './pages/LandingPage';
 import { isSessionValid } from './auth';
 
-function App() {
-  const hasSession = isSessionValid();
+const ProtectedRoute = ({ children }) => {
+  if (window.location.hash.includes('id_token') || isSessionValid()) {
+    return children;
+  }
+  return <Navigate to="/auth-dark" replace />;
+};
 
+function App() {
   return (
     <div className="dark text-slate-100 min-h-screen border-none">
       <Routes>
@@ -18,11 +23,9 @@ function App() {
         <Route
           path="/dashboard"
           element={
-            window.location.hash.includes('id_token')
-              ? <Dashboard />
-              : hasSession
-                ? <Dashboard />
-                : <Navigate to="/auth-dark" replace />
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
           }
         />
       </Routes>
