@@ -508,6 +508,7 @@ const Dashboard = () => {
             if (output && output.trim()) {
                 setGeneratedOutputs(prev => ({ ...prev, [platform]: output }));
                 showToast("success", `Regenerated ${platform} content`);
+                fetchHistory(false).catch(() => { });
             }
         } catch (e) {
             if (e.message !== "unauthorized") showToast("error", `Failed to regenerate ${platform}`);
@@ -806,9 +807,27 @@ const Dashboard = () => {
                                                 </button>
                                             </div>
                                         </div>
-                                        <p className="text-sm text-slate-300 line-clamp-2 leading-relaxed opacity-90 group-hover:opacity-100 transition-opacity mb-3">
-                                            {item.request?.text || item.response?.result || "No preview available..."}
-                                        </p>
+                                        <div className="space-y-2 mb-3">
+                                            {item.request?.text && (
+                                                <div className="bg-black/20 rounded-lg p-2.5 border border-white/5">
+                                                    <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-1 flex items-center gap-1.5"><FileText className="w-3 h-3" /> Source Input</p>
+                                                    <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed opacity-90 group-hover:opacity-100 transition-opacity">
+                                                        {item.request.text}
+                                                    </p>
+                                                </div>
+                                            )}
+                                            {item.response?.result && (
+                                                <div className="bg-primary/5 rounded-lg p-2.5 border border-primary/10">
+                                                    <p className="text-[10px] text-primary/70 uppercase tracking-wider font-bold mb-1 flex items-center gap-1.5"><Check className="w-3 h-3" /> Generated Output</p>
+                                                    <p className="text-xs text-white line-clamp-3 leading-relaxed opacity-90 group-hover:opacity-100 transition-opacity font-medium">
+                                                        {item.response.result}
+                                                    </p>
+                                                </div>
+                                            )}
+                                            {(!item.request?.text && !item.response?.result) && (
+                                                <p className="text-sm text-slate-500 italic">No preview available...</p>
+                                            )}
+                                        </div>
                                         {/* Reuse Prompt Button */}
                                         <button
                                             onClick={(e) => {
